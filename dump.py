@@ -13,17 +13,18 @@ import sys
 from urllib import urlretrieve
 import os.path
 import datetime
+months = ["0","Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]
 
 def loadHelper(uri):
     opener = urllib2.build_opener()
-    opener.addheaders = [('User-agent', 'Mozilla/5.0')]
+    opener.addheaders = [('User-agent', 'Mozilla/7.0')]
     try:
         thing = opener.open(uri, None, 10)
         soup = BeautifulSoup(thing.read(), "lxml")
         if not (soup is None):
             return soup
         else:
-            print "soup is None"
+            print ("soup is None")
             loadHelper(uri)
     except (timeout, urllib2.HTTPError, urllib2.URLError) as error:
         sys.stdout.write("{} encountered, hold on, bro".format(error))
@@ -31,8 +32,37 @@ def loadHelper(uri):
         time.sleep(30)
         loadHelper(uri)
 
+def detectPostDate(link):
+    # link must be like http://acidcow.com/page/6/
+    # return date of post in format YYYYMMMDDD, ex. 2015May20
+    if type(link) is not BeautifulSoup:
+        link = loadHelper(link)
+    #print(link)
+    alltitl = link.find('ul', attrs={"class":"reset infobox"})
+    #print(alltitl)
+    smalltitle = alltitl.find_all('li')[1].get_text()
+    #print(smalltitle)
+    if smalltitle.split()[0] == "Today,":
+        dt = datetime.datetime.now().timetuple()
+        postdate = str(dt[0]) + months[dt[1]] + str(dt[2])
+        return postdate
+    if smalltitle.split()[0] == "Yesterday,":
+        dt = datetime.datetime.now().timetuple()
+        if dt[2] == 1:
+            postdate = str(dt[0]) + months[dt[1]-1] + str(31)
+        else:
+            postdate = str(dt[0]) + months[dt[1]] + str(dt[2]-1)
+        return postdate
+    postdate = smalltitle.split(" ")[:-1]
+    # May, -> May
+    postdate[1] = postdate[1][:-1]
+    # "2015 " -> 2015
+    postdate[2] = postdate[2].strip()
+    return postdate[2] + postdate[1] + postdate[0]
+
 
 def downloadPicture(link, prefix, pathDir):
+    #print("start download {0}".format(link))
     #prefix - date
     picname = link.rsplit('/',1)[1]
     picname = str(prefix) + picname
@@ -46,8 +76,6 @@ def downloadPost(page, path2Save, postType='pic'):
         posttypeString = 'Acid Gifdump'
     else:
         posttypeString = 'Acid Picdump'
-    #TODO improve, get this information from webpage
-    #prefix_date = datetime.date.today() - datetime.timedelta(days=page)
     link2Page = 'http://acidcow.com/page/'
     if page == 0: return 0
     if page == 1:
@@ -55,6 +83,7 @@ def downloadPost(page, path2Save, postType='pic'):
     else:
         link2Page = link2Page + str(page) + '/'
     print(link2Page)
+    prefix_date = detectPostDate(link2Page)
 
     currentPage = loadHelper(link2Page)
     for titlefg in currentPage.find_all('div', attrs={"class":"titlefg"}):
@@ -64,12 +93,8 @@ def downloadPost(page, path2Save, postType='pic'):
             picDumpLink = link.get('href')
             break
 
+    print(picDumpLink)
     picDumpLink = loadHelper(picDumpLink)
-    for div in picDumpLink.find_all('div', attrs={"class":"silver"}):
-        postDate = div.get_text().split('|')[1].strip().split()
-        postDate[1] = postDate[1][:-1]
-        postDate.reverse()
-        prefix_date = "".join(postDate)
 
     for pic in picDumpLink.find_all('div', attrs={"class":"picture"}):
         picLink = pic.find('img').get('src')
@@ -102,18 +127,21 @@ def downloadPicDump(page,path2Save):
         print(picLink)
         downloadPicture(picLink, prefix_date, path2Save)
 
-
-
-if __name__ == '__main__':
+def doit():
     PICDIR = '/Users/onotole/yandex.disk/humordirs/ACIDPICDUMP'
     GIFDIR = '/Users/onotole/yandex.disk/humordirs/ACIDGIFDUMP'
     if not os.path.exists(PICDIR):
         os.mkdir(PICDIR)
-    for i in range(2):
+    #for i in range(186,200):
+    for i in range(3):
         print("iteration " + str(i))
         try:
             downloadPost(i, GIFDIR, 'gif')
             downloadPost(i, PICDIR, 'pic')
-        except UnboundLocalError: #gifs or pics wasn't posted
-            pass
+        except UnboundLocalError as e: #gifs or pics wasn't posted
+            print ("gifs or pics wasn't posted, index={0}".format(i))
+            raise(e)
 
+if __name__ == '__main__':
+    doit()
+    #print(detectPostDate('http://acidcow.com'))
